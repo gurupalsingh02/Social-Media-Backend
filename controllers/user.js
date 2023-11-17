@@ -1,9 +1,11 @@
+const { sendEmail } = require("../middlewares/sendEmail");
 const Post = require("../models/post");
 const User = require("../models/user");
+const crypto = require("crypto");
 
 exports.register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password,imageUrl } = req.body;
     let user = await User.findOne({ email });
     if (user)
       return res
@@ -13,7 +15,7 @@ exports.register = async (req, res) => {
       name,
       email,
       password,
-      avatar: { public_id: "sample_id", url: "sample_url" },
+      imageUrl,
     });
     const token = await user.generateToken();
     console.log(token);
@@ -122,12 +124,15 @@ exports.updatePassword = async (req, res) => {
 exports.updateProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
-    const { name, email } = req.body;
+    const { name, email,imageUrl } = req.body;
     if (name) {
       user.name = name;
     }
     if (email) {
       user.email = email;
+    }
+    if(imageUrl){
+      user.imageUrl = imageUrl;
     }
     await user.save();
     res.status(200).json({
@@ -261,8 +266,8 @@ exports.getUserProfile = async (req, res) => {
       });
     }
     res.status(200).json({
-      success:true,
-      user
+      success: true,
+      user,
     });
   } catch (error) {
     res.status(500).json({
@@ -272,18 +277,87 @@ exports.getUserProfile = async (req, res) => {
   }
 };
 
-
-exports.getAllUsers = async (req,res)=>{
+exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.find({}).populate("posts");
     res.status(200).json({
-      success:true,
-      users
+      success: true,
+      users,
     });
   } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.forgotPassword = async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+    const resetPasswordToken = user.getResetPasswordToken();
+    await user.save();
+    const resetUrl = `${req.protocol}://${req.get(
+      "host"
+    )}/api/v1/password/reset/${resetPasswordToken}`;
+    const message =
+      "Reset Your password by clicking on the link below \n\n" + resetUrl;
+    try {
+      await sendEmail({
+        email: user.email,
+        subject: "Password Reset",
+        message,
+      });
+      res.status(200).json({
+        success: true,
+        message: "Email sent successfully",
+      });
+    } catch (error) {
+      user.resetPasswordToken = undefined;
+      user.resetPasswordExpire = undefined;
+      await user.save();
       res.status(500).json({
         success: false,
         message: error.message,
       });
+    }
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
+};
+
+
+exports.resetPassword = async (req,res)=>{
+try {
+  const resetPasswordToken = crypto.createHash('sha256').update(req.params.token).digest('hex');
+  const user = await User.findOne({resetPasswordToken,resetPasswordExpire:{$gt:Date.now()}});
+  if(!user){
+    return res.status(401).json({
+      success:false,
+      message:'Invalid Token or Token Expired'
+    });
+  }
+  user.password = req.body.password;
+  user.resetPasswordToken = undefined;
+  user.resetPasswordExpire = undefined;
+  await user.save();
+  res.status(200).json({
+    success:true,
+    message:'Password Updated Successfully'
+  });
+} catch (error) {
+  res.status(500).json({
+    success: false,
+    message: error.message,
+  });
+}
 }

@@ -3,9 +3,9 @@ const postSchema = new mongoose.Schema({
   caption: {
     type: String,
   },
-  image: {
-    public_id: String,
-    url: String,
+  imageUrl:{
+    type:String,
+    required:[true,"Please enter a Image Url"],
   },
   owner: {
     type: mongoose.Schema.Types.ObjectId,
